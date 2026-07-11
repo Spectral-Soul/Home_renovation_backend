@@ -3,7 +3,7 @@ graph.py — status distinguishes "no slot" from "calendar broken"
 """
 import os
 from typing import TypedDict, Optional
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, date as _date_cls
 from langgraph.graph import StateGraph, END
 from langchain_core.tools import tool
 from twilio.rest import Client as TwilioClient
@@ -28,8 +28,23 @@ def get_rate_card_price(job_type: str) -> dict:
     return get_rate_card_price_from_db(job_type)
 
 
+
 async def check_calendar_availability(requested_date: str) -> dict:
     try:
+        # Reject anything before today — use the business's own timezone,
+        # not server/UTC time, so "today" matches what the owner considers today.
+        from zoneinfo import ZoneInfo
+        today_local = datetime.now(ZoneInfo("Asia/Kolkata")).date()
+        try:
+            requested = _date_cls.fromisoformat(requested_date)
+        except ValueError:
+            return {"requested_date": requested_date, "available": False, "confirmed_time": None,
+                    "reason": "invalid_date_format"}
+
+        if requested < today_local:
+            return {"requested_date": requested_date, "available": False, "confirmed_time": None,
+                    "reason": "date_in_past"}
+
         creds = await get_valid_credentials()
         service = build("calendar", "v3", credentials=creds)
 
@@ -52,7 +67,6 @@ async def check_calendar_availability(requested_date: str) -> dict:
     except Exception as e:
         return {"requested_date": requested_date, "available": False, "confirmed_time": None,
                 "reason": "calendar_error", "error": str(e)}
-
 
 async def book_calendar_event(date: str, time: str, lead_name: str, lead_phone: str) -> dict:
     creds = await get_valid_credentials()
