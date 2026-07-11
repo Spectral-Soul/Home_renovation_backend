@@ -14,7 +14,7 @@ from fastapi import UploadFile, File
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
 from daily_report import send_daily_report
 from datetime import datetime, timedelta
-from oauth import router as oauth_router
+from oauth import router as oauth_router, CalendarAuthError
 # ...
 app = FastAPI()
 app.include_router(oauth_router)
