@@ -35,12 +35,20 @@ Rules:
   if the caller later expresses intent to book, requests a specific date, or 
   provides contact info for follow-up. Treat the early price question as small 
   talk in that case — disposition is genuine_interest.
+- disposition is spam_or_noise if ANY of the following apply: the transcript is 
+  incoherent or nonsensical (random characters, gibberish name like "saop" or 
+  "asdf", a phone number given with no other context); the caller never 
+  articulates an actual renovation need despite being asked directly; the 
+  conversation appears to be a test call, misdial, or accidental connection; 
+  or the transcript is too short/garbled to represent a real inquiry. When in 
+  doubt between spam_or_noise and genuine_interest for a low-quality transcript, 
+  prefer spam_or_noise — a missed real lead costs less than spamming the owner 
+  with noise on every broken call.
 - is_standard_job is true only if the job clearly matches a normal renovation category; false if unusually custom.
 - confidence reflects how complete and clear the extraction is, not how good the lead is.
 
 Transcript:
 {transcript}"""
-
 
 async def run_extraction(transcript: str) -> LeadQualification:
     result = await structured_llm.ainvoke(
