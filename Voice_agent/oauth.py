@@ -2,6 +2,9 @@
 oauth.py — Google OAuth2 flow for owner calendar access. Single-owner system.
 Async throughout — Google token refresh and Supabase calls are offloaded
 to threads, since the underlying supabase-py client is synchronous.
+
+Built entirely from environment variables — no client_secret.json needed
+on the server. This avoids shipping a secrets file to production at all.
 """
 
 import os
@@ -17,9 +20,21 @@ from db import supabase
 
 app = FastAPI()
 
-CLIENT_SECRETS_FILE = "client_secret.json"
 SCOPES = ["https://www.googleapis.com/auth/calendar"]
 REDIRECT_URI = os.environ.get("OAUTH_REDIRECT_URI", "http://localhost:8000/oauth/callback")
+
+GOOGLE_CLIENT_ID = os.environ.get("GOOGLE_CLIENT_ID", "")
+GOOGLE_CLIENT_SECRET = os.environ.get("GOOGLE_CLIENT_SECRET", "")
+
+CLIENT_CONFIG = {
+    "web": {
+        "client_id": GOOGLE_CLIENT_ID,
+        "client_secret": GOOGLE_CLIENT_SECRET,
+        "auth_uri": "https://accounts.google.com/o/oauth2/auth",
+        "token_uri": "https://oauth2.googleapis.com/token",
+        "redirect_uris": [REDIRECT_URI],
+    }
+}
 
 STATE_TTL_SECONDS = 600
 
@@ -42,10 +57,19 @@ def _cleanup_expired_states():
         _pending_states.pop(s, None)
 
 
+def _build_flow() -> Flow:
+    if not GOOGLE_CLIENT_ID or not GOOGLE_CLIENT_SECRET:
+        raise HTTPException(
+            status_code=500,
+            detail="GOOGLE_CLIENT_ID / GOOGLE_CLIENT_SECRET not set in environment",
+        )
+    return Flow.from_client_config(CLIENT_CONFIG, scopes=SCOPES, redirect_uri=REDIRECT_URI)
+
+
 @app.get("/oauth/start")
 def start_oauth():
     _cleanup_expired_states()
-    flow = Flow.from_client_secrets_file(CLIENT_SECRETS_FILE, scopes=SCOPES, redirect_uri=REDIRECT_URI)
+    flow = _build_flow()
     auth_url, state = flow.authorization_url(access_type="offline", prompt="consent")
 
     _pending_states[state] = {
@@ -66,7 +90,7 @@ async def oauth_callback(code: str = None, state: str = None, error: str = None)
     stored = _pending_states.pop(state)
     code_verifier = stored["code_verifier"]
 
-    flow = Flow.from_client_secrets_file(CLIENT_SECRETS_FILE, scopes=SCOPES, redirect_uri=REDIRECT_URI)
+    flow = _build_flow()
     flow.code_verifier = code_verifier
 
     if not code:
@@ -109,8 +133,8 @@ async def get_valid_credentials() -> Credentials:
         token=None,
         refresh_token=stored_refresh_token,
         token_uri="https://oauth2.googleapis.com/token",
-        client_id=os.environ["GOOGLE_CLIENT_ID"],
-        client_secret=os.environ["GOOGLE_CLIENT_SECRET"],
+        client_id=GOOGLE_CLIENT_ID,
+        client_secret=GOOGLE_CLIENT_SECRET,
         scopes=SCOPES,
     )
 
@@ -138,4 +162,3 @@ async def get_valid_credentials() -> Credentials:
 @app.exception_handler(CalendarAuthError)
 async def calendar_auth_error_handler(request: Request, exc: CalendarAuthError):
     return JSONResponse(status_code=401, content={"detail": str(exc)})
-
