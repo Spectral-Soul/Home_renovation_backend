@@ -70,6 +70,23 @@ async def book_calendar_event(date: str, time: str, lead_name: str, lead_phone: 
     return service.events().insert(calendarId="primary", body=event).execute()
 
 
+async def find_next_available_slot(start_date: str, max_days: int = 14) -> dict:
+    """
+    Searches forward day-by-day from start_date (inclusive) for the first
+    open slot, up to max_days ahead. Returns the first available date found,
+    or reason='no_slot_in_range' if none exists within the window.
+    """
+    current = datetime.fromisoformat(start_date)
+    for i in range(max_days):
+        candidate = (current + timedelta(days=i)).strftime("%Y-%m-%d")
+        result = await check_calendar_availability(candidate)
+        if result["available"]:
+            return result
+        if result.get("reason") in ("calendar_auth_error", "calendar_error"):
+            return result
+    return {"requested_date": start_date, "available": False, "confirmed_time": None, "reason": "no_slot_in_range"}
+
+
 TWILIO_ACCOUNT_SID = os.environ.get("TWILIO_ACCOUNT_SID", "")
 TWILIO_AUTH_TOKEN = os.environ.get("TWILIO_AUTH_TOKEN", "")
 TWILIO_FROM_NUMBER = os.environ.get("TWILIO_FROM_NUMBER", "")
@@ -133,7 +150,6 @@ async def dispatch_node(state: GraphState) -> GraphState:
             insert_lead_row(state["lead"], state.get("estimate"), state.get("calendar_slot"), status="flagged_for_review")
         return state
 
-    # not available — split "genuinely no slot" from "calendar broke"
     reason = slot.get("reason")
     if reason in ("calendar_auth_error", "calendar_error"):
         state["notify_status"] = f"calendar_check_failed: {slot.get('error')}"
@@ -150,6 +166,7 @@ async def dispatch_node(state: GraphState) -> GraphState:
         )
 
     return state
+
 
 async def generate_estimate_only_node(state: GraphState) -> GraphState:
     lead = state["lead"]
