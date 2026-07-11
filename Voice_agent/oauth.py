@@ -4,21 +4,22 @@ Async throughout — Google token refresh and Supabase calls are offloaded
 to threads, since the underlying supabase-py client is synchronous.
 
 Built entirely from environment variables — no client_secret.json needed
-on the server. This avoids shipping a secrets file to production at all.
+on the server. Exposed as an APIRouter, mounted into the main app in
+elevenlabs_transcript.py — this file does NOT run its own FastAPI app.
 """
 
 import os
 import asyncio
 from datetime import datetime, timezone
-from fastapi import FastAPI, HTTPException, Request
-from fastapi.responses import RedirectResponse, JSONResponse
+from fastapi import APIRouter, HTTPException, Request
+from fastapi.responses import RedirectResponse
 from google_auth_oauthlib.flow import Flow
 from google.oauth2.credentials import Credentials
 from google.auth.transport.requests import Request as GoogleRequest
 from google.auth.exceptions import RefreshError
 from db import supabase
 
-app = FastAPI()
+router = APIRouter()
 
 SCOPES = ["https://www.googleapis.com/auth/calendar"]
 REDIRECT_URI = os.environ.get("OAUTH_REDIRECT_URI", "http://localhost:8000/oauth/callback")
@@ -66,7 +67,7 @@ def _build_flow() -> Flow:
     return Flow.from_client_config(CLIENT_CONFIG, scopes=SCOPES, redirect_uri=REDIRECT_URI)
 
 
-@app.get("/oauth/start")
+@router.get("/oauth/start")
 def start_oauth():
     _cleanup_expired_states()
     flow = _build_flow()
@@ -79,7 +80,7 @@ def start_oauth():
     return RedirectResponse(auth_url)
 
 
-@app.get("/oauth/callback")
+@router.get("/oauth/callback")
 async def oauth_callback(code: str = None, state: str = None, error: str = None):
     if error:
         raise HTTPException(status_code=400, detail=f"OAuth denied or failed: {error}")
@@ -157,8 +158,3 @@ async def get_valid_credentials() -> Credentials:
                 await asyncio.sleep(1)
 
     raise CalendarAuthError(f"Calendar token expired or revoked after retry: {last_error}")
-
-
-@app.exception_handler(CalendarAuthError)
-async def calendar_auth_error_handler(request: Request, exc: CalendarAuthError):
-    return JSONResponse(status_code=401, content={"detail": str(exc)})
