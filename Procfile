@@ -1,0 +1,1 @@
+﻿web: cd Voice_agent && uvicorn elevenlabs_transcript:app --host 0.0.0.0 --port $PORT
