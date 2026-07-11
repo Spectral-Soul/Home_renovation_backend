@@ -22,8 +22,12 @@ from db import supabase
 router = APIRouter()
 
 SCOPES = ["https://www.googleapis.com/auth/calendar"]
-REDIRECT_URI = os.environ.get("OAUTH_REDIRECT_URI", "http://localhost:8000/oauth/callback")
-
+REDIRECT_URI = os.environ.get("OAUTH_REDIRECT_URI")
+if not REDIRECT_URI:
+    raise RuntimeError(
+        "OAUTH_REDIRECT_URI is not set. Set it to your deployed callback URL "
+        "(e.g. https://<your-app>.up.railway.app/oauth/callback) in your environment."
+    )
 GOOGLE_CLIENT_ID = os.environ.get("GOOGLE_CLIENT_ID", "")
 GOOGLE_CLIENT_SECRET = os.environ.get("GOOGLE_CLIENT_SECRET", "")
 
