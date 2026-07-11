@@ -1,5 +1,5 @@
 """
-webhook.py — receives ElevenLabs post_call_transcription webhook, runs extraction, triggers graph.
+elevenlabs_transcript.py — receives ElevenLabs post_call_transcription webhook, runs extraction, triggers graph.
 """
 
 import hmac
@@ -7,15 +7,17 @@ import hashlib
 import time
 import os
 from fastapi import FastAPI, Request, HTTPException
+from fastapi.responses import JSONResponse
 from pydantic import BaseModel
+from datetime import date as _date
 from extraction import run_extraction
-from graph import run_graph, check_calendar_availability
+from graph import run_graph, check_calendar_availability, send_sms_to_owner, find_next_available_slot
 from fastapi import UploadFile, File
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
 from daily_report import send_daily_report
 from datetime import datetime, timedelta
 from oauth import router as oauth_router, CalendarAuthError
-# ...
+
 app = FastAPI()
 app.include_router(oauth_router)
 
@@ -64,6 +66,34 @@ async def check_availability_tool(req: AvailabilityRequest):
         return {"available": True, "message": f"{req.requested_date} is open at {result['confirmed_time']}."}
     return {"available": False, "message": f"{req.requested_date} is not available."}
 
+
+class NextAvailableRequest(BaseModel):
+    start_date: str | None = None  # YYYY-MM-DD, defaults to today
+    max_days: int = 14
+
+@app.post("/tools/next-available-slot")
+async def next_available_slot_tool(req: NextAvailableRequest):
+    start = req.start_date or _date.today().isoformat()
+    result = await find_next_available_slot(start, req.max_days)
+    if result["available"]:
+        return {"available": True, "date": result["requested_date"], "time": result["confirmed_time"],
+                "message": f"Nearest opening is {result['requested_date']} at {result['confirmed_time']}."}
+    return {"available": False, "message": "No openings found in the next two weeks."}
+
+
+class NotifyOwnerRequest(BaseModel):
+    message: str
+    to_phone: str | None = None  # defaults to OWNER_PHONE if not provided
+
+@app.post("/tools/notify-owner")
+async def notify_owner_tool(req: NotifyOwnerRequest):
+    target = req.to_phone or OWNER_PHONE
+    sent = await send_sms_to_owner(target, req.message)
+    if sent:
+        return {"status": "sent", "to": target}
+    return {"status": "failed", "to": target, "note": "Twilio not configured or send failed — check logs"}
+
+
 @app.post("/trigger-daily-report")
 async def trigger_daily_report():
     result = send_daily_report()
@@ -92,7 +122,6 @@ async def handle_post_call(request: Request):
     try:
         lead = await run_extraction(transcript_text)
     except Exception as e:
-        # extraction failed entirely — log raw transcript, don't lose the call
         print(f"[extraction failed]: {e}")
         return {"status": "extraction_failed", "error": str(e)}
 
