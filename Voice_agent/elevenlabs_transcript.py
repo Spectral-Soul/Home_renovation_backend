@@ -93,3 +93,8 @@ async def handle_post_call(request: Request):
         "lead": lead,
         "owner_phone": OWNER_PHONE,
         "estimate": None,
+        "calendar_slot": None,
+        "notify_status": None,
+    })
+
+    return {"status": "processed", "result": str(result)}
