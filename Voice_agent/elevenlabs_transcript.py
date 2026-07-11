@@ -86,13 +86,15 @@ class NotifyOwnerRequest(BaseModel):
     to_phone: str | None = None  # defaults to OWNER_PHONE if not provided
 
 @app.post("/tools/notify-owner")
-async def notify_owner_tool(req: NotifyOwnerRequest):
+async def notify_owner_tool(request: Request):
+    body = await request.json()
+    print(f"[DEBUG notify-owner raw body]: {body}")
+    req = NotifyOwnerRequest(**body)
     target = req.to_phone or OWNER_PHONE
     sent = await send_sms_to_owner(target, req.message)
     if sent:
         return {"status": "sent", "to": target}
     return {"status": "failed", "to": target, "note": "Twilio not configured or send failed — check logs"}
-
 
 @app.post("/trigger-daily-report")
 async def trigger_daily_report():
