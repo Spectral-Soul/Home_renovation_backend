@@ -13,7 +13,6 @@ from datetime import date as _date
 from extraction import run_extraction
 from graph import run_graph, check_calendar_availability, send_sms_to_owner, find_next_available_slot
 from fastapi import UploadFile, File
-from apscheduler.schedulers.asyncio import AsyncIOScheduler
 from daily_report import send_daily_report
 from datetime import datetime, timedelta
 from oauth import router as oauth_router, CalendarAuthError
@@ -26,18 +25,13 @@ OWNER_PHONE = os.environ.get("OWNER_PHONE", "")
 print(f"[DEBUG] OWNER_PHONE loaded as: '{OWNER_PHONE}'")
 
 
-scheduler = AsyncIOScheduler(timezone="Asia/Kolkata")
-scheduler.add_job(send_daily_report, "cron", hour=20, minute=0)
+
 
 
 @app.exception_handler(CalendarAuthError)
 async def calendar_auth_error_handler(request: Request, exc: CalendarAuthError):
     return JSONResponse(status_code=401, content={"detail": str(exc)})
 
-
-@app.on_event("startup")
-async def start_scheduler():
-    scheduler.start()
 
 def verify_signature(raw_body: bytes, signature_header: str) -> bool:
     if not signature_header or not WEBHOOK_SECRET:
