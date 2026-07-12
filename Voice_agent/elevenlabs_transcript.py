@@ -98,8 +98,14 @@ async def notify_owner_tool(request: Request):
 
 @app.post("/trigger-daily-report")
 async def trigger_daily_report():
-    result = send_daily_report()
-    return result
+    try:
+        result = send_daily_report()
+        return result
+    except Exception as e:
+        import traceback
+        tb = traceback.format_exc()
+        print(tb)
+        return {"status": "error", "detail": str(e), "traceback": tb}
 
 @app.post("/webhooks/elevenlabs/post-call")
 async def handle_post_call(request: Request):
