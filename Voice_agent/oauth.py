@@ -11,6 +11,7 @@ elevenlabs_transcript.py — this file does NOT run its own FastAPI app.
 import os
 import asyncio
 from datetime import datetime, timezone
+from fastapi.responses import RedirectResponse
 from fastapi import APIRouter, HTTPException, Request
 from fastapi.responses import RedirectResponse
 from google_auth_oauthlib.flow import Flow
@@ -122,7 +123,7 @@ async def oauth_callback(code: str = None, state: str = None, error: str = None)
         }).execute()
     )
 
-    return {"status": "connected", "message": "Calendar access granted"}
+    return RedirectResponse(url="https://oauth.tickers.online/connected.html")
 
 
 async def get_valid_credentials() -> Credentials:
